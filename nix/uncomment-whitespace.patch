@@ -1,0 +1,14 @@
+--- a/src/processor.rs
++++ b/src/processor.rs
+@@ -299,7 +299,11 @@
+             if before_ws && after_ws {
+                 bytes.drain(line_start..line_end);
+             } else {
+-                bytes.drain(start..end);
++                for byte in &mut bytes[start..end] {
++                    if *byte != b'\n' && *byte != b'\r' {
++                        *byte = b' ';
++                    }
++                }
+             }
+         }
