@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cd -- "$project"
+publicate_flake=${PUBLICATE_FLAKE:-.#publicate}
+version_file="$project/.publicate/publish-version"
+
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Interactive publication using publicate.toml and a Publicate Nix app.' \
+        'Requires Bash, Git, Nix with flakes, and Linux user/mount namespaces.' \
+        'PUBLICATE_FLAKE selects the app (default: .#publicate).' \
+        'The script remembers successful versions in .publicate/publish-version.'
+    exit 0
+fi
+if [[ $# != 0 ]]; then
+    printf '%s\n' 'Usage: ./publish.sh [--help]' >&2
+    exit 1
+fi
+
+nix run "$publicate_flake" -- diff
+version=v0.1.0
+if [[ -f "$version_file" ]]; then
+    IFS= read -r version < "$version_file"
+fi
+printf '\nSelected version: %s\n' "$version"
+read -r -p 'Bump the version? [y/N] ' bump
+case "$bump" in
+    y|Y|yes|YES)
+        read -r -p 'New version (vMAJOR.MINOR.PATCH): ' version
+        ;;
+    ''|n|N|no|NO) ;;
+    *) printf '%s\n' 'Choose yes or no.' >&2; exit 1 ;;
+esac
+read -r -p 'Publish to origin after verification? [y/N] ' publish
+options=()
+case "$publish" in
+    y|Y|yes|YES) options+=(--push) ;;
+    ''|n|N|no|NO) ;;
+    *) printf '%s\n' 'Choose yes or no.' >&2; exit 1 ;;
+esac
+
+nix run "$publicate_flake" -- release --version "$version" "${options[@]}"
+mkdir -p -- "$(dirname -- "$version_file")"
+printf '%s\n' "$version" > "$version_file"
