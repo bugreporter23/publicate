@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd -- "$project"
+publicate_flake=${PUBLICATE_FLAKE:-.#publicate}
+version_file="$project/.publicate/publish-version"
+
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Interactive publication using publicate.toml and a Publicate Nix app.' \
+        'Requires Bash, Git, Nix with flakes, and Linux user/mount namespaces.' \
+        'PUBLICATE_FLAKE selects the app (default: .#publicate).' \
+        'Publication also pushes the current private branch to its own origin.' \
+        'Version conflicts advance the patch number; the prompt offers a minor increment.' \
+        'Automatic increments preserve the major number.' \
+        'Cleanup retains five snapshots per major/minor line by default.' \
+        'The script remembers successful versions in .publicate/publish-version.'
+    exit 0
+fi
+if [[ $# != 0 ]]; then
+    printf '%s\n' 'Usage: ./publicate/publish.sh [--help]' >&2
+    exit 1
+fi
+
+nix run "$publicate_flake" -- diff
+version=v0.1.0
+if [[ -f "$version_file" ]]; then
+    IFS= read -r version < "$version_file"
+fi
+printf '\nSelected version: %s\n' "$version"
+read -r -p 'Bump the minor version (x.Y.0)? [y/N] ' bump
+increments=(--bump-patch)
+case "$bump" in
+    y|Y|yes|YES)
+        increments+=(--bump-minor)
+        ;;
+    ''|n|N|no|NO) ;;
+    *) printf '%s\n' 'Choose yes or no.' >&2; exit 1 ;;
+esac
+read -r -p 'Publish the release and push the current private branch? [y/N] ' publish
+options=()
+case "$publish" in
+    y|Y|yes|YES)
+        options+=(--push)
+        private_branch=$(git symbolic-ref --quiet --short HEAD)
+        git remote get-url origin > /dev/null
+        ;;
+    ''|n|N|no|NO) ;;
+    *) printf '%s\n' 'Choose yes or no.' >&2; exit 1 ;;
+esac
+
+nix run "$publicate_flake" -- release --version "$version" \
+    "${increments[@]}" --version-file "$version_file" "${options[@]}"
+if [[ ${#options[@]} -gt 0 ]]; then
+    nix run "$publicate_flake" -- prune --keep-patches "${PUBLICATE_KEEP_PATCHES:-5}" --push
+    printf 'Pushing private branch %s to its origin.\n' "$private_branch"
+    git push --no-follow-tags origin "refs/heads/$private_branch:refs/heads/$private_branch"
+fi

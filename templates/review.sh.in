@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+directory=$PWD
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Usage: /path/to/project/publicate/review.sh [DIRECTORY]' \
+        'Prepare a tickets-only worktree under DIRECTORY, defaulting to the current directory.' \
+        'An existing agent reads the returned instructions and reviews current code.' \
+        'PUBLICATE_FLAKE selects the Publicate app (default: .#publicate).'
+    exit 0
+fi
+if [[ $# -gt 1 ]]; then
+    printf '%s\n' 'Supply at most one worktree parent directory.' >&2
+    exit 1
+fi
+if [[ $# == 1 ]]; then
+    mkdir -p -- "$1"
+    directory=$(cd -- "$1" && pwd)
+elif [[ $directory == "$project" ]]; then
+    directory="$project/.publicate/reviews"
+fi
+cd -- "$project"
+exec nix run "${PUBLICATE_FLAKE:-.#publicate}" -- --project "$project" review --directory "$directory"
